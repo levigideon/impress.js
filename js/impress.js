@@ -19,7 +19,7 @@
 /*jshint bitwise:true, curly:true, eqeqeq:true, forin:true, latedef:true, newcap:true,
          noarg:true, noempty:true, undef:true, strict:true, browser:true */
 
-// You are one of those who like to know how things work inside?
+// You are one of those who like to know how thing work inside?
 // Let me show you the cogs that make impress.js run...
 (function ( document, window ) {
     'use strict';
@@ -191,7 +191,7 @@
     
     // GLOBALS AND DEFAULTS
     
-    // This is where the root elements of all impress.js instances will be kept.
+    // This is were the root elements of all impress.js instances will be kept.
     // Yes, this means you can have more than one instance on a page, but I'm not
     // sure if it makes any sense in practice ;)
     var roots = {};
@@ -217,7 +217,7 @@
     // It's the core `impress` function that returns the impress.js API
     // for a presentation based on the element with given id ('impress'
     // by default).
-    var impress = window.impress = function ( rootId ) {
+    var impress = window.impress = function ( rootId, options ) {
         
         // If impress.js is not supported by the browser return a dummy API
         // it may not be a perfect solution but we return early and avoid
@@ -230,6 +230,12 @@
                 next: empty
             };
         }
+        var defaultOpts = {
+            enableHash:false,
+            enableMouse:false,
+            enableKey:false
+        }
+        var opts = jQuery.extend({}, defaultOpts, options);
         
         rootId = rootId || "impress";
         
@@ -435,7 +441,7 @@
             // whenever slide is selected
             //
             // If you are reading this and know any better way to handle it, I'll be glad to hear about it!
-            window.scrollTo(0, 0);
+            // window.scrollTo(0, 0);
             
             var step = stepsData["impress-" + el.id];
             
@@ -577,7 +583,13 @@
         // There classes can be used in CSS to style different types of steps.
         // For example the `present` class can be used to trigger some custom
         // animations when step is shown.
-        root.addEventListener("impress:init", function(){
+        root.addEventListener("impress:init", function (event) {
+            // Getting API from event data.
+            // So you don't event need to know what is the id of the root element
+            // or anything. `impress:init` event data gives you everything you 
+            // need to control the presentation that was just initialized.
+            var api = event.detail.api;
+
             // STEP CLASSES
             steps.forEach(function (step) {
                 step.classList.add("future");
@@ -595,39 +607,43 @@
             }, false);
             
         }, false);
-        
-        // Adding hash change support.
-        root.addEventListener("impress:init", function(){
-            
-            // last hash detected
-            var lastHash = "";
-            
-            // `#/step-id` is used instead of `#step-id` to prevent default browser
-            // scrolling to element in hash.
-            //
-            // And it has to be set after animation finishes, because in Chrome it
-            // makes transtion laggy.
-            // BUG: http://code.google.com/p/chromium/issues/detail?id=62820
-            root.addEventListener("impress:stepenter", function (event) {
-                window.location.hash = lastHash = "#/" + event.target.id;
-            }, false);
-            
-            window.addEventListener("hashchange", function () {
-                // When the step is entered hash in the location is updated
-                // (just few lines above from here), so the hash change is 
-                // triggered and we would call `goto` again on the same element.
+
+        if (opts.enableHash) {
+
+            // Adding hash change support.
+            root.addEventListener("impress:init", function(){
+                
+                // last hash detected
+                var lastHash = "";
+                
+                // `#/step-id` is used instead of `#step-id` to prevent default browser
+                // scrolling to element in hash.
                 //
-                // To avoid this we store last entered hash and compare.
-                if (window.location.hash !== lastHash) {
-                    goto( getElementFromHash() );
-                }
+                // And it has to be set after animation finishes, because in Chrome it
+                // makes transtion laggy.
+                // BUG: http://code.google.com/p/chromium/issues/detail?id=62820
+                root.addEventListener("impress:stepenter", function (event) {
+                    window.location.hash = lastHash = "#/" + event.target.id;
+                }, false);
+                
+                window.addEventListener("hashchange", function () {
+                    // When the step is entered hash in the location is updated
+                    // (just few lines above from here), so the hash change is 
+                    // triggered and we would call `goto` again on the same element.
+                    //
+                    // To avoid this we store last entered hash and compare.
+                    if (window.location.hash !== lastHash) {
+                        goto( getElementFromHash() );
+                    }
+                }, false);
+                
+                // START 
+                // by selecting step defined in url or first step of the presentation
+                goto(getElementFromHash() || steps[0], 0);
             }, false);
-            
-            // START 
-            // by selecting step defined in url or first step of the presentation
-            goto(getElementFromHash() || steps[0], 0);
-        }, false);
         
+        }
+
         body.classList.add("impress-disabled");
         
         // store and return API for given impress.js root element
@@ -635,7 +651,8 @@
             init: init,
             goto: goto,
             next: next,
-            prev: prev
+            prev: prev,
+            opts: opts
         });
 
     };
@@ -678,113 +695,119 @@
         var api = event.detail.api;
         
         // KEYBOARD NAVIGATION HANDLERS
-        
-        // Prevent default keydown action when one of supported key is pressed.
-        document.addEventListener("keydown", function ( event ) {
-            if ( event.keyCode === 9 || ( event.keyCode >= 32 && event.keyCode <= 34 ) || (event.keyCode >= 37 && event.keyCode <= 40) ) {
-                event.preventDefault();
-            }
-        }, false);
-        
-        // Trigger impress action (next or prev) on keyup.
-        
-        // Supported keys are:
-        // [space] - quite common in presentation software to move forward
-        // [up] [right] / [down] [left] - again common and natural addition,
-        // [pgdown] / [pgup] - often triggered by remote controllers,
-        // [tab] - this one is quite controversial, but the reason it ended up on
-        //   this list is quite an interesting story... Remember that strange part
-        //   in the impress.js code where window is scrolled to 0,0 on every presentation
-        //   step, because sometimes browser scrolls viewport because of the focused element?
-        //   Well, the [tab] key by default navigates around focusable elements, so clicking
-        //   it very often caused scrolling to focused element and breaking impress.js
-        //   positioning. I didn't want to just prevent this default action, so I used [tab]
-        //   as another way to moving to next step... And yes, I know that for the sake of
-        //   consistency I should add [shift+tab] as opposite action...
-        document.addEventListener("keyup", function ( event ) {
-            if ( event.keyCode === 9 || ( event.keyCode >= 32 && event.keyCode <= 34 ) || (event.keyCode >= 37 && event.keyCode <= 40) ) {
-                switch( event.keyCode ) {
-                    case 33: // pg up
-                    case 37: // left
-                    case 38: // up
-                             api.prev();
-                             break;
-                    case 9:  // tab
-                    case 32: // space
-                    case 34: // pg down
-                    case 39: // right
-                    case 40: // down
-                             api.next();
-                             break;
-                }
+
+        if (api.opts.enableKey){
                 
-                event.preventDefault();
-            }
-        }, false);
-        
-        // delegated handler for clicking on the links to presentation steps
-        document.addEventListener("click", function ( event ) {
-            // event delegation with "bubbling"
-            // check if event target (or any of its parents is a link)
-            var target = event.target;
-            while ( (target.tagName !== "A") &&
-                    (target !== document.documentElement) ) {
-                target = target.parentNode;
-            }
-            
-            if ( target.tagName === "A" ) {
-                var href = target.getAttribute("href");
-                
-                // if it's a link to presentation step, target this step
-                if ( href && href[0] === '#' ) {
-                    target = document.getElementById( href.slice(1) );
-                }
-            }
-            
-            if ( api.goto(target) ) {
-                event.stopImmediatePropagation();
-                event.preventDefault();
-            }
-        }, false);
-        
-        // delegated handler for clicking on step elements
-        document.addEventListener("click", function ( event ) {
-            var target = event.target;
-            // find closest step element that is not active
-            while ( !(target.classList.contains("step") && !target.classList.contains("active")) &&
-                    (target !== document.documentElement) ) {
-                target = target.parentNode;
-            }
-            
-            if ( api.goto(target) ) {
-                event.preventDefault();
-            }
-        }, false);
-        
-        // touch handler to detect taps on the left and right side of the screen
-        // based on awesome work of @hakimel: https://github.com/hakimel/reveal.js
-        document.addEventListener("touchstart", function ( event ) {
-            if (event.touches.length === 1) {
-                var x = event.touches[0].clientX,
-                    width = window.innerWidth * 0.3,
-                    result = null;
-                    
-                if ( x < width ) {
-                    result = api.prev();
-                } else if ( x > window.innerWidth - width ) {
-                    result = api.next();
-                }
-                
-                if (result) {
+            // Prevent default keydown action when one of supported key is pressed.
+            document.addEventListener("keydown", function ( event ) {
+                if ( event.keyCode === 9 || ( event.keyCode >= 32 && event.keyCode <= 34 ) || (event.keyCode >= 37 && event.keyCode <= 40) ) {
                     event.preventDefault();
                 }
-            }
-        }, false);
-        
+            }, false);
+            
+            // Trigger impress action (next or prev) on keyup.
+            
+            // Supported keys are:
+            // [space] - quite common in presentation software to move forward
+            // [up] [right] / [down] [left] - again common and natural addition,
+            // [pgdown] / [pgup] - often triggered by remote controllers,
+            // [tab] - this one is quite controversial, but the reason it ended up on
+            //   this list is quite an interesting story... Remember that strange part
+            //   in the impress.js code where window is scrolled to 0,0 on every presentation
+            //   step, because sometimes browser scrolls viewport because of the focused element?
+            //   Well, the [tab] key by default navigates around focusable elements, so clicking
+            //   it very often caused scrolling to focused element and breaking impress.js
+            //   positioning. I didn't want to just prevent this default action, so I used [tab]
+            //   as another way to moving to next step... And yes, I know that for the sake of
+            //   consistency I should add [shift+tab] as opposite action...
+            document.addEventListener("keyup", function ( event ) {
+                if ( event.keyCode === 9 || ( event.keyCode >= 32 && event.keyCode <= 34 ) || (event.keyCode >= 37 && event.keyCode <= 40) ) {
+                    switch( event.keyCode ) {
+                        case 33: // pg up
+                        case 37: // left
+                        case 38: // up
+                                 api.prev();
+                                 break;
+                        case 9:  // tab
+                        case 32: // space
+                        case 34: // pg down
+                        case 39: // right
+                        case 40: // down
+                                 api.next();
+                                 break;
+                    }
+                    
+                    event.preventDefault();
+                }
+            }, false);
+        }
+
+        if (api.opts.enableMouse) {
+    
+            // delegated handler for clicking on the links to presentation steps
+            document.addEventListener("click", function ( event ) {
+                // event delegation with "bubbling"
+                // check if event target (or any of its parents is a link)
+                var target = event.target;
+                while ( (target.tagName !== "A") &&
+                        (target !== document.documentElement) ) {
+                    target = target.parentNode;
+                }
+                
+                if ( target.tagName === "A" ) {
+                    var href = target.getAttribute("href");
+                    
+                    // if it's a link to presentation step, target this step
+                    if ( href && href[0] === '#' ) {
+                        target = document.getElementById( href.slice(1) );
+                    }
+                }
+                
+                if ( api.goto(target) ) {
+                    event.stopImmediatePropagation();
+                    event.preventDefault();
+                }
+            }, false);
+            
+            // delegated handler for clicking on step elements
+            document.addEventListener("click", function ( event ) {
+                var target = event.target;
+                // find closest step element that is not active
+                while ( !(target.classList.contains("step") && !target.classList.contains("active")) &&
+                        (target !== document.documentElement) ) {
+                    target = target.parentNode;
+                }
+                
+                if ( api.goto(target) ) {
+                    event.preventDefault();
+                }
+            }, false);
+            
+            // touch handler to detect taps on the left and right side of the screen
+            // based on awesome work of @hakimel: https://github.com/hakimel/reveal.js
+            document.addEventListener("touchstart", function ( event ) {
+                if (event.touches.length === 1) {
+                    var x = event.touches[0].clientX,
+                        width = window.innerWidth * 0.3,
+                        result = null;
+                        
+                    if ( x < width ) {
+                        result = api.prev();
+                    } else if ( x > window.innerWidth - width ) {
+                        result = api.next();
+                    }
+                    
+                    if (result) {
+                        event.preventDefault();
+                    }
+                }
+            }, false);
+        }
+
         // rescale presentation when window is resized
         window.addEventListener("resize", throttle(function () {
             // force going to active step again, to trigger rescaling
-            api.goto( document.querySelector(".step.active"), 500 );
+            api.goto( document.querySelector(".active"), 500 );
         }, 250), false);
         
     }, false);
