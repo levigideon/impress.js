@@ -266,6 +266,8 @@
         var root = byId( rootId );
         var canvas = document.createElement("div");
         
+
+        root.firstgoto = true;
         var initialized = false;
         
         // STEP EVENTS
@@ -336,7 +338,13 @@
         
         // `init` API function that initializes (and runs) the presentation.
         var init = function () {
-            if (initialized) { return; }
+            if (initialized) {
+
+                window.location.reload();
+
+                // canvas = document.createElement("div");
+                return; 
+            }
             
             // First we set up the viewport for mobile devices.
             // For some reason iPad goes nuts when it is not done properly.
@@ -346,6 +354,7 @@
                 meta.name = 'viewport';
                 document.head.appendChild(meta);
             }
+
             
             // initialize configuration object
             var rootData = root.dataset;
@@ -364,16 +373,30 @@
             arrayify( root.childNodes ).forEach(function ( el ) {
                 canvas.appendChild( el );
             });
+
+            css(root, {
+                display: 'none',
+                top: "50%",
+                left: "50%",
+                transform: perspective( config.perspective/windowScale ) + scale( windowScale / firstScale )
+            });
+
             root.appendChild(canvas);
             
             // set initial styles
             document.documentElement.style.height = "100%";
             
             css(body, {
-                height: "100%",
-                overflow: "hidden"
+                // height: "100%",
+                // overflow: "hidden"
             });
+
+            // get and init steps
+            steps = $$(".step", root);
+            steps.forEach( initStep );
             
+            var firstScale = steps[0].getAttribute('data-scale') || 1;
+
             var rootStyles = {
                 position: "absolute",
                 transformOrigin: "top left",
@@ -382,25 +405,19 @@
             };
             
             css(root, rootStyles);
-            css(root, {
-                top: "50%",
-                left: "50%",
-                transform: perspective( config.perspective/windowScale ) + scale( windowScale )
-            });
+ 
             css(canvas, rootStyles);
             
             body.classList.remove("impress-disabled");
             body.classList.add("impress-enabled");
             
-            // get and init steps
-            steps = $$(".step", root);
-            steps.forEach( initStep );
+
             
             // set a default initial state of the canvas
             currentState = {
                 translate: { x: 0, y: 0, z: 0 },
                 rotate:    { x: 0, y: 0, z: 0 },
-                scale:     1
+                scale:     1 / (steps[0].getAttribute('data-scale') || 1)
             };
             
             initialized = true;
@@ -432,6 +449,7 @@
                 // presentation not initialized or given element is not a step
                 return false;
             }
+
             
             // Sometimes it's possible to trigger focus on first link with some keyboard action.
             // Browser in such a case tries to scroll the page to make this element visible
@@ -475,6 +493,7 @@
             // and the scaling is delayed, but when we are zooming out we start
             // with scaling down and move and rotation are delayed.
             var zoomin = target.scale >= currentState.scale;
+            var noScaleChange = false;//target.scale == currentState.scale;
             
             duration = toNumber(duration, config.transitionDuration);
             var delay = (duration / 2);
@@ -485,7 +504,9 @@
                 windowScale = computeWindowScale(config);
             }
             
+
             var targetScale = target.scale * windowScale;
+            var intermittentScale = (noScaleChange) ? targetScale : (zoomin ? currentState.scale : targetScale) * ((root.firstgoto || zoomin) ? 1 : 0.7);
             
             // trigger leave of currently active element (if it's not the same step again)
             if (activeStep && activeStep !== el) {
@@ -503,9 +524,9 @@
             css(root, {
                 // to keep the perspective look similar for different scales
                 // we need to 'scale' the perspective, too
-                transform: perspective( config.perspective / targetScale ) + scale( targetScale ),
+                transform: perspective( config.perspective / targetScale ) + scale( intermittentScale ),
                 transitionDuration: duration + "ms",
-                transitionDelay: (zoomin ? delay : 0) + "ms"
+                transitionDelay: (zoomin ? 0 : delay) + "ms"
             });
             
             css(canvas, {
@@ -514,6 +535,7 @@
                 transitionDelay: (zoomin ? 0 : delay) + "ms"
             });
             
+            root.firstgoto = false;
             // Here is a tricky part...
             //
             // If there is no change in scale or no change in rotation and translation, it means there was actually
@@ -548,7 +570,20 @@
             // version 0.5.2 of impress.js: http://github.com/bartaz/impress.js/blob/0.5.2/js/impress.js
             window.clearTimeout(stepEnterTimeout);
             stepEnterTimeout = window.setTimeout(function() {
+
                 onStepEnter(activeStep);
+
+                css(root, {
+                    // to keep the perspective look similar for different scales
+                    // we need to 'scale' the perspective, too
+                    transform: perspective( config.perspective / targetScale ) + scale( targetScale ),
+                    transitionDuration: duration + "ms",
+                    transitionDelay: (zoomin ? delay : 0) + "ms",
+                    display: 'block'
+                });
+                
+               
+
             }, duration + delay);
             
             return el;
